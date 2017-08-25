@@ -62,13 +62,15 @@ def _get_input():
         batch_device=FLAGS.device, 
         preprocess_device=FLAGS.device )
     
-    return image,width,label,length
+    return image,width,label,length,text,filename
 
 def _get_session_config():
     """Setup session config to soften device placement"""
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.4)
     config=tf.ConfigProto(
         allow_soft_placement=True, 
-        log_device_placement=False)
+        log_device_placement=False,
+    gpu_options=gpu_options)
 
     return config
 
@@ -101,7 +103,7 @@ def _get_testing(rnn_logits,sequence_length,label,label_length):
         tf.summary.scalar( 'label_error', label_error )
         tf.summary.scalar( 'sequence_error', sequence_error )
 
-    return loss, label_error, sequence_error
+    return loss, label_error, sequence_error, predictions[0]
 
 def _get_checkpoint():
     """Get the checkpoint path from the given model output directory"""
@@ -128,13 +130,13 @@ def _get_init_trained():
 def main(argv=None):
 
     with tf.Graph().as_default():
-        image,width,label,length = _get_input()
+        image,width,label,length,text,filename = _get_input()
 
         with tf.device(FLAGS.device):
             features,sequence_length = model.convnet_layers( image, width, mode)
             logits = model.rnn_layers( features, sequence_length,
                                        mjsynth.num_classes() )
-            loss,label_error,sequence_error = _get_testing(
+            loss,label_error,sequence_error, predict = _get_testing(
                 logits,sequence_length,label,length)
 
         global_step = tf.contrib.framework.get_or_create_global_step()
@@ -149,11 +151,12 @@ def main(argv=None):
         summary_writer = tf.summary.FileWriter( os.path.join(FLAGS.model,
                                                             FLAGS.output) )
 
-        step_ops = [global_step, loss, label_error, sequence_error]
+        step_ops = [global_step, loss, label_error, sequence_error, tf.sparse_tensor_to_dense(label), tf.sparse_tensor_to_dense(predict), text, filename]
 
         with tf.Session(config=session_config) as sess:
             
             sess.run(init_op)
+            sess.run(sequence_length)
 
             coord = tf.train.Coordinator() # Launch reader threads
             threads = tf.train.start_queue_runners(sess=sess,coord=coord)
@@ -166,7 +169,26 @@ def main(argv=None):
 
                     if not coord.should_stop():
                         step_vals = sess.run(step_ops)
-                        print step_vals
+                        print(step_vals[0:4])
+                        print('Done')
+                        with open('/cnn_lstm_ctc_ocr/src/result.txt', 'a') as f:
+                            out_charset = "abcdefghijklmnopqrstuvwxyz0123456789./-"
+                            for pred in range(len(step_vals[5])):
+                                pred_txt = ''
+                                for symb in step_vals[5][pred].tolist():
+                                    pred_txt += str(out_charset[symb])
+                                pred_txt_clear = ''
+                                stop_pass = False
+                                for symb in pred_txt[::-1]:
+                                    if symb == 'a' and stop_pass == False:
+                                        pass
+                                    else:
+                                        pred_txt_clear = symb + pred_txt_clear
+                                stop_pass = True
+                                f.write(pred_txt_clear + ' ')
+                                f.write(step_vals[6][pred].decode('utf-8') + ' ')
+                                f.write(step_vals[7][pred].decode('utf-8') + '\n')
+
                         summary_str = sess.run(summary_op)
                         summary_writer.add_summary(summary_str,step_vals[0])
                     else:
