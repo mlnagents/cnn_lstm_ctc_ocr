@@ -8,6 +8,8 @@ adaptation of Shi et al.'s CRNN architecture
 downloads and trains using Jaderberg et al.'s synthetic data ([IJCV
 2016](http://dx.doi.org/10.1007/s11263-015-0823-z)).
 
+Developed for Tensorflow 1.1
+
 
 # Structure
 
@@ -77,7 +79,10 @@ error, both varying by 2-5%.
 
 # Testing
 
-The test script streams statistics for small batches of validation (or test) data. It ouputs the label error (percentage of characters predicted incorrectly), the test loss, and the sequence error (percentage of words--entire sequences--predicted incorrectly.)
+The test script streams statistics for small batches of validation (or
+test) data. It ouputs the label error (percentage of characters
+predicted incorrectly), the test loss, and the sequence error
+(percentage of words--entire sequences--predicted incorrectly.)
 
 # Configuration
 

@@ -20,7 +20,7 @@ import tensorflow as tf
 # The list (well, string) of valid output characters
 # If any example contains a character not found here, an error will result
 # from the calls to .index in the decoder below
-out_charset="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+out_charset="abcdefghijklmnopqrstuvwxyz0123456789./-"
 
 def num_classes():
     return len(out_charset)
