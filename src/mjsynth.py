@@ -46,7 +46,7 @@ def bucketed_input_pipeline(base_dir,file_patterns,
     # Allow a smaller final batch if we are going for a fixed number of epochs
     final_batch = (num_epochs!=None) 
 
-    data_queue = _get_data_queue(base_dir, file_patterns, 
+    data_queue = _get_data_queue(base_dir, file_patterns, # возвращает tensor со списком длиной capacity, состоящим из файлов tfrecords
                                  capacity=queue_capacity,
                                  num_epochs=num_epochs)
 
@@ -145,13 +145,13 @@ def _get_data_queue(base_dir, file_patterns=['*.tfrecord'], capacity=2**15,
     """Get a data queue for a list of record files"""
 
     # List of lists ...
-    data_files = [tf.gfile.Glob(os.path.join(base_dir,file_pattern))
+    data_files = [tf.gfile.Glob(os.path.join(base_dir,file_pattern)) # tf.gfile.Glob returns a list of files that match the given pattern(s)
                   for file_pattern in file_patterns]
     # flatten
     data_files = [data_file for sublist in data_files for data_file in sublist]
-    data_queue = tf.train.string_input_producer(data_files, 
+    data_queue = tf.train.string_input_producer(data_files,
                                                 capacity=capacity,
-                                                num_epochs=num_epochs)
+                                                num_epochs=num_epochs) # creates a queue for holding the filenames, https://stackoverflow.com/questions/41909915/tf-train-string-input-producer-behavior-in-a-loop, https://stackoverflow.com/questions/37815265/what-is-the-argument-capacity-for-in-tf-train-string-input-producer
     return data_queue
 
 def _read_word_record(data_queue):
