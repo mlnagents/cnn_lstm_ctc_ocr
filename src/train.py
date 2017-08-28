@@ -143,7 +143,9 @@ def _get_training(rnn_logits,label,sequence_length):
 def _get_session_config():
     """Setup session config to soften device placement"""
 
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.33)
     config=tf.ConfigProto(
+        gpu_options=gpu_options,
         allow_soft_placement=True, 
         log_device_placement=False)
 
@@ -167,8 +169,8 @@ def _get_init_pretrained():
 
 def main(argv=None):
 
-    with tf.Graph().as_default():
-        global_step = tf.contrib.framework.get_or_create_global_step()
+    with tf.Graph().as_default(): # формальная (если граф в программе всего один) конструкция для объединения операция в отдельный граф, https://stackoverflow.com/questions/39614938/why-do-we-need-tensorflow-tf-graph , https://danijar.com/what-is-a-tensorflow-session/
+        global_step = tf.contrib.framework.get_or_create_global_step() # переменная для подсчета количество эпох (?)
         
         image,width,label = _get_input()
 
