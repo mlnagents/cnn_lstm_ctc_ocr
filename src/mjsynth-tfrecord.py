@@ -131,7 +131,7 @@ def get_image_filenames(image_list_filename):
 
 def get_image(sess,filename):
     """Given path to an image file, load its data and size"""
-    with tf.gfile.FastGFile(filename, 'r') as f:
+    with tf.gfile.FastGFile(filename, 'rb') as f: # если просто 'r', то возникает ошибка UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte
         image_data = f.read()
     image = sess.run(jpeg_decoder,feed_dict={jpeg_data: image_data})
     height = image.shape[0]
