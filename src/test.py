@@ -156,7 +156,6 @@ def main(argv=None):
         with tf.Session(config=session_config) as sess:
             
             sess.run(init_op)
-            sess.run(sequence_length)
 
             coord = tf.train.Coordinator() # Launch reader threads
             threads = tf.train.start_queue_runners(sess=sess,coord=coord)
