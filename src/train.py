@@ -201,6 +201,8 @@ def main(argv=None):
                 if sv.should_stop():
                     break                    
                 [step_loss,step]=sess.run([train_op,global_step])
+                if step%100==0:
+                    print(step_loss) # вывод на экран loss
             sv.saver.save( sess, os.path.join(FLAGS.output,'model.ckpt'),
                            global_step=global_step)
 
