@@ -164,6 +164,6 @@ def rnn_layers(features, sequence_length, num_classes):
 def ctc_loss_layer(rnn_logits, sequence_labels, sequence_length):
     """Build CTC Loss layer for training"""
     loss = tf.nn.ctc_loss( sequence_labels, rnn_logits, sequence_length,
-                           time_major=True )
+                           time_major=True) # здесь оставить значения по-умолчанию, ctc_merge_repeated=False в ctc_beam_search_decoder
     total_loss = tf.reduce_mean(loss)
     return total_loss
