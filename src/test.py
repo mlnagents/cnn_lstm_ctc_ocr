@@ -31,7 +31,7 @@ tf.app.flags.DEFINE_string('output','test',
 
 tf.app.flags.DEFINE_integer('batch_size',2**8,
                             """Eval batch size""")
-tf.app.flags.DEFINE_integer('test_interval_secs', 60,
+tf.app.flags.DEFINE_integer('test_interval_secs', 0, # зачем-то time.sleep в конце кода перед следующей итерацией теста
                              'Time between test runs')
 
 tf.app.flags.DEFINE_string('device','/gpu:0',
@@ -70,7 +70,7 @@ def _get_session_config():
     config=tf.ConfigProto(
         allow_soft_placement=True, 
         log_device_placement=False,
-    gpu_options=gpu_options)
+        gpu_options=gpu_options)
 
     return config
 
@@ -83,11 +83,14 @@ def _get_testing(rnn_logits,sequence_length,label,label_length):
     with tf.name_scope("train"):
         loss = model.ctc_loss_layer(rnn_logits,label,sequence_length) 
     with tf.name_scope("test"):
-        predictions,_ = tf.nn.ctc_beam_search_decoder(rnn_logits, 
+        predictions, probability = tf.nn.ctc_beam_search_decoder(rnn_logits, # вытаскивание log_probabilities из ctc
                                                    sequence_length,
                                                    beam_width=128,
                                                    top_paths=1,
-                                                   merge_repeated=True)
+                                                   merge_repeated=False) # если True, то на выходе модели не будет повторяющихся символов
+        #predictions, probability = tf.nn.ctc_greedy_decoder(rnn_logits,  # альтернативный loss (?)
+        #                                           sequence_length,
+        #                                           merge_repeated=True)
         hypothesis = tf.cast(predictions[0], tf.int32) # for edit_distance
         label_errors = tf.edit_distance(hypothesis, label, normalize=False)
         sequence_errors = tf.count_nonzero(label_errors,axis=0)
@@ -103,7 +106,7 @@ def _get_testing(rnn_logits,sequence_length,label,label_length):
         tf.summary.scalar( 'label_error', label_error )
         tf.summary.scalar( 'sequence_error', sequence_error )
 
-    return loss, label_error, sequence_error, predictions[0]
+    return loss, label_error, sequence_error, predictions[0], probability
 
 def _get_checkpoint():
     """Get the checkpoint path from the given model output directory"""
@@ -136,7 +139,7 @@ def main(argv=None):
             features,sequence_length = model.convnet_layers( image, width, mode)
             logits = model.rnn_layers( features, sequence_length,
                                        mjsynth.num_classes() )
-            loss,label_error,sequence_error, predict = _get_testing(
+            loss,label_error,sequence_error, predict, prob = _get_testing(
                 logits,sequence_length,label,length)
 
         global_step = tf.contrib.framework.get_or_create_global_step()
@@ -151,11 +154,12 @@ def main(argv=None):
         summary_writer = tf.summary.FileWriter( os.path.join(FLAGS.model,
                                                             FLAGS.output) )
 
-        step_ops = [global_step, loss, label_error, sequence_error, tf.sparse_tensor_to_dense(label), tf.sparse_tensor_to_dense(predict), text, filename]
+        step_ops = [global_step, loss, label_error, sequence_error, tf.sparse_tensor_to_dense(label), tf.sparse_tensor_to_dense(predict), text, filename, prob]
 
         with tf.Session(config=session_config) as sess:
             
             sess.run(init_op)
+            count_list = []
 
             coord = tf.train.Coordinator() # Launch reader threads
             threads = tf.train.start_queue_runners(sess=sess,coord=coord)
@@ -183,10 +187,13 @@ def main(argv=None):
                                         pass
                                     else:
                                         pred_txt_clear = symb + pred_txt_clear
-                                stop_pass = True
-                                f.write(pred_txt_clear + ' ')
-                                f.write(step_vals[6][pred].decode('utf-8') + ' ')
-                                f.write(step_vals[7][pred].decode('utf-8') + '\n')
+                                        stop_pass = True
+                                if step_vals[7][pred] not in count_list: # временное решения для сохранения в результатах теста только уникальных изображений (для теста изображения извлекаются случайно с повтором)
+                                    f.write(pred_txt_clear + ' ')
+                                    f.write(step_vals[6][pred].decode('utf-8') + ' ')
+                                    f.write(str(step_vals[8][pred][0]) + ' ')
+                                    f.write(step_vals[7][pred].decode('utf-8') + '\n')
+                                    count_list.append(step_vals[7][pred])
 
                         summary_str = sess.run(summary_op)
                         summary_writer.add_summary(summary_str,step_vals[0])
@@ -200,4 +207,5 @@ def main(argv=None):
         coord.join(threads)
 
 if __name__ == '__main__':
+    # from pudb import set_trace; set_trace()
     tf.app.run()
