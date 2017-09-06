@@ -184,11 +184,11 @@ def _read_word_record(data_queue):
 
 def _preprocess_image(image):
     # Rescale from uint8([0,255]) to float([-0.5,0.5])
-    image = tf.image.convert_image_dtype(image, tf.float32)
-    image = tf.subtract(image, 0.5)
+    image = tf.image.convert_image_dtype(image, tf.float32) # из [0,255] становится [0,1]
+    image = tf.subtract(image, 0.5) # из [0,1] становится [-0.5,0.5]
 
     # Pad with copy of first row to expand to 32 pixels height
-    first_row = tf.slice(image, [0, 0, 0], [1, -1, -1])
-    image = tf.concat([first_row, image], 0)
+    # first_row = tf.slice(image, [0, 0, 0], [1, -1, -1]) # https://www.quora.com/How-does-tf-slice-work-in-TensorFlow
+    # image = tf.concat([first_row, image], 0) # не нужно, так как размер изображений в датасете уже 32 пикселя
 
     return image
