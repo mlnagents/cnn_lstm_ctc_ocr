@@ -182,7 +182,7 @@ def main(argv=None):
 
         session_config = _get_session_config()
 
-        summary_op = tf.summary.merge_all()
+        summary_op = tf.summary.merge_all() # Merges all summaries collected in the default graph.
         init_op = tf.group( tf.global_variables_initializer(),
                             tf.local_variables_initializer()) 
 
@@ -190,9 +190,9 @@ def main(argv=None):
             logdir=FLAGS.output,
             init_op=init_op,
             summary_op=summary_op,
-            save_summaries_secs=30,
-            init_fn=_get_init_pretrained(),
-            save_model_secs=150)
+            save_summaries_secs=30, # Number of seconds between the computation of summaries for the event log
+            init_fn=_get_init_pretrained(), # None если train запускается без предобученных весов
+            save_model_secs=150) # Number of seconds between the creation of model checkpoints
 
 
         with sv.managed_session(config=session_config) as sess:
