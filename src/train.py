@@ -57,7 +57,7 @@ tf.app.flags.DEFINE_string('train_path','../data/train/',
                            """Base directory for training data""")
 tf.app.flags.DEFINE_string('filename_pattern','words-*',
                            """File pattern for input data""")
-tf.app.flags.DEFINE_integer('num_input_threads',4,
+tf.app.flags.DEFINE_integer('num_input_threads',4, # выборка будет собираться из нескольких tfrecords (using threads=N will create N copies of the reader op connected to the queue so that they can run in parallel)
                           """Number of readers for input data""")
 tf.app.flags.DEFINE_integer('width_threshold',None,
                             """Limit of input image width""")
@@ -73,7 +73,7 @@ mode = learn.ModeKeys.TRAIN # 'Configure' training mode for dropout layers
 def _get_input():
     """Set up and return image, label, and image width tensors"""
 
-    image,width,label,_,_,_=mjsynth.bucketed_input_pipeline(
+    image, width, label, _, _, filename = mjsynth.bucketed_input_pipeline(
         FLAGS.train_path, 
         str.split(FLAGS.filename_pattern,','),
         batch_size=FLAGS.batch_size,
@@ -83,7 +83,7 @@ def _get_input():
         length_threshold=FLAGS.length_threshold )
 
     #tf.summary.image('images',image) # Uncomment to see images in TensorBoard
-    return image,width,label
+    return image, width, label, filename
 
 def _get_single_input():
     """Set up and return image, label, and width tensors"""
@@ -172,7 +172,7 @@ def main(argv=None):
     with tf.Graph().as_default(): # формальная (если граф в программе всего один) конструкция для объединения операция в отдельный граф, https://stackoverflow.com/questions/39614938/why-do-we-need-tensorflow-tf-graph , https://danijar.com/what-is-a-tensorflow-session/
         global_step = tf.contrib.framework.get_or_create_global_step() # переменная для подсчета количество эпох (?)
         
-        image,width,label = _get_input()
+        image, width, label, filename = _get_input() # формирование выборки для обучения
 
         with tf.device(FLAGS.train_device):
             features,sequence_length = model.convnet_layers( image, width, mode)
@@ -201,6 +201,7 @@ def main(argv=None):
                 if sv.should_stop():
                     break                    
                 [step_loss,step]=sess.run([train_op,global_step])
+                # print(sess.run(filename)) # вывод на экран собранного батча для обучнеия
                 if step%100==0:
                     print(step_loss) # вывод на экран loss
             sv.saver.save( sess, os.path.join(FLAGS.output,'model.ckpt'),
