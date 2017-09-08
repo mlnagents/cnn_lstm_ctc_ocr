@@ -57,7 +57,7 @@ tf.app.flags.DEFINE_string('train_path','../data/train/',
                            """Base directory for training data""")
 tf.app.flags.DEFINE_string('filename_pattern','words-*',
                            """File pattern for input data""")
-tf.app.flags.DEFINE_integer('num_input_threads',4, # выборка будет собираться из нескольких tfrecords (using threads=N will create N copies of the reader op connected to the queue so that they can run in parallel)
+tf.app.flags.DEFINE_integer('num_input_threads',1, # выборка будет собираться из нескольких tfrecords (using threads=N will create N copies of the reader op connected to the queue so that they can run in parallel)
                           """Number of readers for input data""")
 tf.app.flags.DEFINE_integer('width_threshold',None,
                             """Limit of input image width""")
@@ -191,7 +191,7 @@ def main(argv=None):
             init_op=init_op,
             summary_op=summary_op,
             save_summaries_secs=30, # Number of seconds between the computation of summaries for the event log
-            init_fn=_get_init_pretrained(), # None если train запускается без предобученных весов
+            init_fn=_get_init_pretrained(), # None если train запускается без предобученных весов
             save_model_secs=150) # Number of seconds between the creation of model checkpoints
 
 
