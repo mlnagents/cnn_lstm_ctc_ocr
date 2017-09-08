@@ -57,23 +57,22 @@ def bucketed_input_pipeline(base_dir,file_patterns,
 
         keep_input = _get_input_filter(width, width_threshold, # true или false, оставлять изображение в выборке или нет в зависимости от порога ширины/высоты изображения
                                        length, length_threshold)
-        data_tuple = [image, label, length, text, filename]
+        data_tuple = [image, width, label, length, text, filename]
         # bucket_by_sequence_length делит изображения на батчи, кластеризуя изображения в соответствии с их шириной
         # если размер батча слишком велик для имеющегося количества изображений данной ширины в датасете, то изображения в батче будут повторяться
         # это реализовано из необходимости паддинга для соблюдения одинаковой ширины изображений внутри одного батча
         # если изображений внутри датасета одинаковой ширины нет, то батч собирается из изображений с шириной с некоторым отнклонением
         # затем среди них проводится паддинг
         # https://blog.altoros.com/the-magic-behind-google-translate-sequence-to-sequence-models-and-tensorflow.html
-        width,data_tuple = tf.contrib.training.bucket_by_sequence_length(
-            input_length=width,
+        # ниже функция bucket_by_sequence_length была заменена на tf.train.batch, с которой нет подобных проблем
+        data_tuple = tf.train.batch(
             tensors=data_tuple,
-            bucket_boundaries=boundaries,
             batch_size=batch_size,
+            num_threads=num_threads,
             capacity=queue_capacity,
-            keep_input=keep_input,
-            allow_smaller_final_batch=final_batch,
-            dynamic_pad=True)
-        [image, label, length, text, filename] = data_tuple
+            dynamic_pad=True,
+            allow_smaller_final_batch=final_batch)
+        [image, width, label, length, text, filename] = data_tuple
         label = tf.deserialize_many_sparse(label, tf.int64) # post-batching...
         label = tf.cast(label, tf.int32) # for ctc_loss
     return image, width, label, length, text, filename
