@@ -51,13 +51,19 @@ def bucketed_input_pipeline(base_dir,file_patterns,
                                  num_epochs=num_epochs)
 
     with tf.device(input_device): # Create bucketing batcher
-        image, width, label, length, text, filename  = _read_word_record(
-            data_queue)
-        image = _preprocess_image(image) # move after batch?
+        image, width, label, length, text, filename  = _read_word_record(data_queue) # считывает изображения из tfrecord
 
-        keep_input = _get_input_filter(width, width_threshold,
+        image = _preprocess_image(image) # нормализация изображения
+
+        keep_input = _get_input_filter(width, width_threshold, # true или false, оставлять изображение в выборке или нет в зависимости от порога ширины/высоты изображения
                                        length, length_threshold)
         data_tuple = [image, label, length, text, filename]
+        # bucket_by_sequence_length делит изображения на батчи, кластеризуя изображения в соответствии с их шириной
+        # если размер батча слишком велик для имеющегося количества изображений данной ширины в датасете, то изображения в батче будут повторяться
+        # это реализовано из необходимости паддинга для соблюдения одинаковой ширины изображений внутри одного батча
+        # если изображений внутри датасета одинаковой ширины нет, то батч собирается из изображений с шириной с некоторым отнклонением
+        # затем среди них проводится паддинг
+        # https://blog.altoros.com/the-magic-behind-google-translate-sequence-to-sequence-models-and-tensorflow.html
         width,data_tuple = tf.contrib.training.bucket_by_sequence_length(
             input_length=width,
             tensors=data_tuple,
@@ -88,12 +94,13 @@ def threaded_input_pipeline(base_dir,file_patterns,
                                  num_epochs=num_epochs)
 
     # each thread has a subgraph with its own reader (sharing filename queue)
+    # можно заменить на tf.train.batch https://stackoverflow.com/questions/35689547/how-to-process-single-training-file-in-parallel
     data_tuples = [] # list of subgraph [image, label, width, text] elements
     with tf.device(preprocess_device):
         for _ in range(num_threads):
-            image, width, label, length, text, filename  = _read_word_record(
-                data_queue)
-            image = _preprocess_image(image) # move after batch?
+            image, width, label, length, text, filename  = _read_word_record(data_queue) # считывает изображения из tfrecord
+
+            image = _preprocess_image(image) # нормализация изображения
             data_tuples.append([image, width, label, length, text, filename])
 
     with tf.device(batch_device): # Create batch queue
@@ -148,7 +155,7 @@ def _get_data_queue(base_dir, file_patterns=['*.tfrecord'], capacity=2**15,
     data_files = [tf.gfile.Glob(os.path.join(base_dir,file_pattern)) # tf.gfile.Glob returns a list of files that match the given pattern(s)
                   for file_pattern in file_patterns]
     # flatten
-    data_files = [data_file for sublist in data_files for data_file in sublist]
+    data_files = [data_file for sublist in data_files for data_file in sublist] # лист с путями к файлам tfrecords
     data_queue = tf.train.string_input_producer(data_files,
                                                 capacity=capacity,
                                                 num_epochs=num_epochs) # creates a queue for holding the filenames, https://stackoverflow.com/questions/41909915/tf-train-string-input-producer-behavior-in-a-loop, https://stackoverflow.com/questions/37815265/what-is-the-argument-capacity-for-in-tf-train-string-input-producer
