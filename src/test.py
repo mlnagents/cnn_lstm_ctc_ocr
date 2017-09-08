@@ -41,8 +41,13 @@ tf.app.flags.DEFINE_string('test_path','../data/',
                            """Base directory for test/validation data""")
 tf.app.flags.DEFINE_string('filename_pattern','val/words-*',
                            """File pattern for input data""")
-tf.app.flags.DEFINE_integer('num_input_threads',4,
+tf.app.flags.DEFINE_integer('num_input_threads',1,
                           """Number of readers for input data""")
+
+tf.app.flags.DEFINE_integer('width_threshold',None,
+                            """Limit of input image width""")
+tf.app.flags.DEFINE_integer('length_threshold',None,
+                            """Limit of input string length width""")
 
 tf.logging.set_verbosity(tf.logging.WARN)
 
@@ -53,14 +58,14 @@ mode = learn.ModeKeys.INFER # 'Configure' training mode for dropout layers
 def _get_input():
     """Set up and return image, label, width and text tensors"""
 
-    image,width,label,length,text,filename=mjsynth.threaded_input_pipeline(
+    image, width, label, length, text, filename = mjsynth.bucketed_input_pipeline(
         FLAGS.test_path,
         str.split(FLAGS.filename_pattern,','),
         batch_size=FLAGS.batch_size,
         num_threads=FLAGS.num_input_threads,
-        num_epochs=None, # Repeat for streaming
-        batch_device=FLAGS.device, 
-        preprocess_device=FLAGS.device )
+        input_device=FLAGS.device,
+        width_threshold=FLAGS.width_threshold,
+        length_threshold=FLAGS.length_threshold)
     
     return image,width,label,length,text,filename
 
@@ -133,7 +138,7 @@ def _get_init_trained():
 def main(argv=None):
 
     with tf.Graph().as_default():
-        image,width,label,length,text,filename = _get_input()
+        image,width,label,length,text,filename = _get_input() # извлечение выборки изображений для теста
 
         with tf.device(FLAGS.device):
             features,sequence_length = model.convnet_layers( image, width, mode)
