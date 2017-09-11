@@ -46,7 +46,7 @@ def bucketed_input_pipeline(base_dir,file_patterns,
     # Allow a smaller final batch if we are going for a fixed number of epochs
     final_batch = (num_epochs!=None) 
 
-    data_queue = _get_data_queue(base_dir, file_patterns, # возвращает tensor со списком длиной capacity, состоящим из файлов tfrecords
+    data_queue, number_of_images = _get_data_queue(base_dir, file_patterns, # возвращает tensor со списком длиной capacity, состоящим из файлов tfrecords
                                  capacity=queue_capacity,
                                  num_epochs=num_epochs)
 
@@ -75,7 +75,7 @@ def bucketed_input_pipeline(base_dir,file_patterns,
         [image, width, label, length, text, filename] = data_tuple
         label = tf.deserialize_many_sparse(label, tf.int64) # post-batching...
         label = tf.cast(label, tf.int32) # for ctc_loss
-    return image, width, label, length, text, filename
+    return image, width, label, length, text, filename, number_of_images
 
 def threaded_input_pipeline(base_dir,file_patterns,
                             num_threads=4,
@@ -88,7 +88,7 @@ def threaded_input_pipeline(base_dir,file_patterns,
     # Allow a smaller final batch if we are going for a fixed number of epochs
     final_batch = (num_epochs!=None) 
 
-    data_queue = _get_data_queue(base_dir, file_patterns, 
+    data_queue, number_of_images = _get_data_queue(base_dir, file_patterns, 
                                  capacity=queue_capacity,
                                  num_epochs=num_epochs)
 
@@ -111,7 +111,7 @@ def threaded_input_pipeline(base_dir,file_patterns,
             dynamic_pad=True)
         label = tf.deserialize_many_sparse(label, tf.int64) # post-batching...
         label = tf.cast(label, tf.int32) # for ctc_loss
-    return image, width, label, length, text, filename
+    return image, width, label, length, text, filename, number_of_images
 
 def _get_input_filter(width, width_threshold, length, length_threshold):
     """Boolean op for discarding input data based on string or image size
@@ -155,10 +155,15 @@ def _get_data_queue(base_dir, file_patterns=['*.tfrecord'], capacity=2**15,
                   for file_pattern in file_patterns]
     # flatten
     data_files = [data_file for sublist in data_files for data_file in sublist] # лист с путями к файлам tfrecords
+    # подсчет количества изображений в датасете
+    number_of_images = 0
+    for file in data_files:
+        for record in tf.python_io.tf_record_iterator(file):
+            number_of_images += 1
     data_queue = tf.train.string_input_producer(data_files,
                                                 capacity=capacity,
                                                 num_epochs=num_epochs) # creates a queue for holding the filenames, https://stackoverflow.com/questions/41909915/tf-train-string-input-producer-behavior-in-a-loop, https://stackoverflow.com/questions/37815265/what-is-the-argument-capacity-for-in-tf-train-string-input-producer
-    return data_queue
+    return data_queue, number_of_images
 
 def _read_word_record(data_queue):
 
