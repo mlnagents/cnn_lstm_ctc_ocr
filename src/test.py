@@ -178,6 +178,7 @@ def main(argv=None):
                     if not coord.should_stop():
                         step_vals = sess.run(step_ops)
                         print(step_vals[0:4])
+                        print(step_vals[7]) # вывод на экран батча
                         print('Done')
                         with open('/cnn_lstm_ctc_ocr/src/result.txt', 'a') as f:
                             out_charset = "abcdefghijklmnopqrstuvwxyz0123456789./-"
@@ -200,8 +201,8 @@ def main(argv=None):
                                     f.write(step_vals[7][pred].decode('utf-8') + '\n')
                                     count_list.append(step_vals[7][pred])
 
-                        summary_str = sess.run(summary_op)
-                        summary_writer.add_summary(summary_str,step_vals[0])
+                        # summary_str = sess.run(summary_op) # вызывает повторное извлечение батча, который не используется моделью
+                        # summary_writer.add_summary(summary_str,step_vals[0])
                     else:
                         break
                     time.sleep(FLAGS.test_interval_secs)
