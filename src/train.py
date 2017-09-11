@@ -200,8 +200,8 @@ def main(argv=None):
             while step < FLAGS.max_num_steps:
                 if sv.should_stop():
                     break                    
-                [step_loss,step]=sess.run([train_op,global_step])
-                # print(sess.run(filename)) # вывод на экран собранного батча для обучнеия
+                [step_loss, step, f_name]=sess.run([train_op, global_step, filename])
+                print(f_name) # вывод на экран собранного батча для обучения
                 if step%100==0:
                     print(step_loss) # вывод на экран loss
             sv.saver.save( sess, os.path.join(FLAGS.output,'model.ckpt'),
