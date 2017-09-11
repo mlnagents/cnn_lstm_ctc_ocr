@@ -17,7 +17,7 @@
 import os
 import tensorflow as tf
 import math
-#from pudb import set_trace; set_trace()
+# from pudb import set_trace; set_trace()
 
 """Each record within the TFRecord file is a serialized Example proto. 
 The Example proto contains the following fields:
@@ -58,7 +58,7 @@ def calc_seq_len(image_width):
 
 seq_lens = [calc_seq_len(w) for w in range(1024)]
 
-def gen_data(input_base_dir, image_list_filename, output_filebase, num_shards=3, start_shard=0):
+def gen_data(input_base_dir, image_list_filename, output_filebase, num_shards=3):
     """ Generate several shards worth of TFRecord data """
     count_skip = 0
     count_done = 0
@@ -66,11 +66,14 @@ def gen_data(input_base_dir, image_list_filename, output_filebase, num_shards=3,
     session_config.gpu_options.allow_growth=True
     sess = tf.Session(config=session_config)
     image_filenames = get_image_filenames(os.path.join(input_base_dir, image_list_filename))
-    num_digits = math.ceil( math.log10( num_shards - 1 ))
+    if num_shards <2:
+    	num_digits = math.ceil( math.log10(1))
+    else:
+    	num_digits = math.ceil( math.log10( num_shards - 1 ))
     shard_format = '%0'+ ('%d'%num_digits) + 'd' # Use appropriate # leading zeros
-    images_per_shard = int(math.ceil( len(image_filenames) / float(num_shards) ))
+    images_per_shard = int(math.ceil( len(image_filenames) / float(num_shards+1) )) # num_shards+1, так как range с 0 до n-1
     
-    for i in range(start_shard,num_shards):
+    for i in range(0, num_shards):
         start = i*images_per_shard
         end   = (i+1)*images_per_shard
         out_filename = output_filebase+'-'+(shard_format % i)+'.tfrecord'
@@ -188,7 +191,7 @@ def _bytes_feature(values):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[values]))
 
 def main(argv=None):
-    gen_data('/Users/kalinin/Desktop/Dataset', 'dir_train.txt', '/Users/kalinin/Desktop/Dataset/tfrecords/train', num_shards=5)
+    gen_data('/Users/kalinin/Desktop/Dataset', 'dir_train.txt', '/Users/kalinin/Desktop/Dataset/tfrecords/train', num_shards=2)
     gen_data('/Users/kalinin/Desktop/Dataset', 'dir_test.txt', '/Users/kalinin/Desktop/Dataset/tfrecords/test', num_shards=2)
     gen_data('/Users/kalinin/Desktop/Dataset', 'dir_val.txt', '/Users/kalinin/Desktop/Dataset/tfrecords/val', num_shards=2)
 
