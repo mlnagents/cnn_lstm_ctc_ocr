@@ -73,7 +73,7 @@ mode = learn.ModeKeys.TRAIN # 'Configure' training mode for dropout layers
 def _get_input():
     """Set up and return image, label, and image width tensors"""
 
-    image, width, label, _, _, filename = mjsynth.bucketed_input_pipeline(
+    image, width, label, _, _, filename, number_of_images = mjsynth.bucketed_input_pipeline(
         FLAGS.train_path, 
         str.split(FLAGS.filename_pattern,','),
         batch_size=FLAGS.batch_size,
