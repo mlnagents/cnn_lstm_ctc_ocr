@@ -58,7 +58,7 @@ mode = learn.ModeKeys.INFER # 'Configure' training mode for dropout layers
 def _get_input():
     """Set up and return image, label, width and text tensors"""
 
-    image, width, label, length, text, filename = mjsynth.bucketed_input_pipeline(
+    image, width, label, length, text, filename, number_of_images = mjsynth.bucketed_input_pipeline(
         FLAGS.test_path,
         str.split(FLAGS.filename_pattern,','),
         batch_size=FLAGS.batch_size,
@@ -67,7 +67,7 @@ def _get_input():
         width_threshold=FLAGS.width_threshold,
         length_threshold=FLAGS.length_threshold)
     
-    return image,width,label,length,text,filename
+    return image, width, label, length, text, filename, number_of_images
 
 def _get_session_config():
     """Setup session config to soften device placement"""
@@ -138,8 +138,7 @@ def _get_init_trained():
 def main(argv=None):
 
     with tf.Graph().as_default():
-        image,width,label,length,text,filename = _get_input() # извлечение выборки изображений для теста
-
+        image, width, label, length, text, filename, number_of_images = _get_input() # извлечение выборки изображений для теста
         with tf.device(FLAGS.device):
             features,sequence_length = model.convnet_layers( image, width, mode)
             logits = model.rnn_layers( features, sequence_length,
@@ -165,7 +164,7 @@ def main(argv=None):
             
             sess.run(init_op)
             count_list = []
-
+            enlisted_images = 0
             coord = tf.train.Coordinator() # Launch reader threads
             threads = tf.train.start_queue_runners(sess=sess,coord=coord)
             
@@ -179,7 +178,7 @@ def main(argv=None):
                         step_vals = sess.run(step_ops)
                         print(step_vals[0:4])
                         print(step_vals[7]) # вывод на экран батча
-                        print('Done')
+                        print('Batch done')
                         with open('/cnn_lstm_ctc_ocr/src/result.txt', 'a') as f:
                             out_charset = "abcdefghijklmnopqrstuvwxyz0123456789./-"
                             for pred in range(len(step_vals[5])):
@@ -188,22 +187,31 @@ def main(argv=None):
                                     pred_txt += str(out_charset[symb])
                                 pred_txt_clear = ''
                                 stop_pass = False
+                                # в выходе модели пустые символы в конце стркои заполняются первым символом out_charset
                                 for symb in pred_txt[::-1]:
-                                    if symb == 'a' and stop_pass == False:
+                                    if symb == out_charset[0] and stop_pass == False:
                                         pass
                                     else:
                                         pred_txt_clear = symb + pred_txt_clear
                                         stop_pass = True
-                                if step_vals[7][pred] not in count_list: # временное решения для сохранения в результатах теста только уникальных изображений (для теста изображения извлекаются случайно с повтором)
+                                # в итоговом txt файле сохраняются только уникальные изображения
+                                # батчи формируются последовательно без повторений
+                                # однако последний тестовый батч может содержать часть изображений первого батча
+                                if step_vals[7][pred] not in count_list:
+                                    enlisted_images += 1
                                     f.write(pred_txt_clear + ' ')
                                     f.write(step_vals[6][pred].decode('utf-8') + ' ')
                                     f.write(str(step_vals[8][pred][0]) + ' ')
                                     f.write(step_vals[7][pred].decode('utf-8') + '\n')
                                     count_list.append(step_vals[7][pred])
+                                    # остановить тест, когда количество уникальных изображений равно или больше изображений в датасете
+                                    if enlisted_images >= number_of_images:
+                                        coord.request_stop()
 
                         # summary_str = sess.run(summary_op) # вызывает повторное извлечение батча, который не используется моделью
                         # summary_writer.add_summary(summary_str,step_vals[0])
                     else:
+                        print('Done')
                         break
                     time.sleep(FLAGS.test_interval_secs)
             except tf.errors.OutOfRangeError:
