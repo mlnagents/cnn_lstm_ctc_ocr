@@ -17,7 +17,7 @@
 import os
 import tensorflow as tf
 from tensorflow.contrib import learn
-
+import numpy as np
 import mjsynth
 import model
 
@@ -194,16 +194,18 @@ def main(argv=None):
             init_fn=_get_init_pretrained(), # None если train запускается без предобученных весов
             save_model_secs=150) # Number of seconds between the creation of model checkpoints
 
-
+        loss_change = []
         with sv.managed_session(config=session_config) as sess:
             step = sess.run(global_step)
             while step < FLAGS.max_num_steps:
                 if sv.should_stop():
                     break                    
                 [step_loss, step, f_name]=sess.run([train_op, global_step, filename])
-                print(f_name) # вывод на экран собранного батча для обучения
+                # print(f_name) # вывод на экран собранного батча для обучения
+                loss_change.append(step_loss)
                 if step%100==0:
                     print(step_loss) # вывод на экран loss
+                    np.save('./train_loss', {'loss':loss_change}) # сохранение лосса для графика
             sv.saver.save( sess, os.path.join(FLAGS.output,'model.ckpt'),
                            global_step=global_step)
 
