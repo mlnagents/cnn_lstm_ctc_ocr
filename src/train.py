@@ -73,7 +73,7 @@ mode = learn.ModeKeys.TRAIN # 'Configure' training mode for dropout layers
 def _get_input():
     """Set up and return image, label, and image width tensors"""
 
-    image, width, label, _, _, filename, number_of_images = mjsynth.bucketed_input_pipeline(
+    image, width, label, length, text, filename, number_of_images = mjsynth.bucketed_input_pipeline(
         FLAGS.train_path, 
         str.split(FLAGS.filename_pattern,','),
         batch_size=FLAGS.batch_size,
@@ -83,7 +83,7 @@ def _get_input():
         length_threshold=FLAGS.length_threshold )
 
     #tf.summary.image('images',image) # Uncomment to see images in TensorBoard
-    return image, width, label, filename
+    return image, width, label, length, text, filename, number_of_images
 
 def _get_single_input():
     """Set up and return image, label, and width tensors"""
@@ -98,7 +98,7 @@ def _get_single_input():
         preprocess_device=FLAGS.input_device )
     return image,width,label,length,text,filename
 
-def _get_training(rnn_logits,label,sequence_length):
+def _get_training(rnn_logits, label, sequence_length, label_length):
     """Set up training ops"""
     with tf.name_scope("train"):
 
@@ -138,7 +138,24 @@ def _get_training(rnn_logits,label,sequence_length):
 
             tf.summary.scalar( 'learning_rate', learning_rate )
 
-    return train_op
+    with tf.name_scope("test"):
+        predictions, probability = tf.nn.ctc_beam_search_decoder(rnn_logits, # вытаскивание log_probabilities из ctc
+                                                   sequence_length,
+                                                   beam_width=128,
+                                                   top_paths=1,
+                                                   merge_repeated=False) # если True, то на выходе модели не будет повторяющихся символов
+        hypothesis = tf.cast(predictions[0], tf.int32) # for edit_distance
+        label_errors = tf.edit_distance(hypothesis, label, normalize=False) # расстояние Левенштейна
+        sequence_errors = tf.count_nonzero(label_errors, axis=0)
+        total_label_error = tf.reduce_sum(label_errors)
+        total_labels = tf.reduce_sum(label_length)
+        label_error = tf.truediv(total_label_error, tf.cast(total_labels, tf.float32), name='label_error')
+        sequence_error = tf.truediv(tf.cast(sequence_errors, tf.int32), tf.shape(label_length)[0], name='sequence_error')
+        tf.summary.scalar('loss', loss)
+        tf.summary.scalar('label_error', label_error)
+        tf.summary.scalar('sequence_error', sequence_error)
+
+    return train_op, label_error, sequence_error, predictions[0], probability
 
 def _get_session_config():
     """Setup session config to soften device placement"""
@@ -173,20 +190,20 @@ def main(argv=None):
         tf.set_random_seed(1) # фиксация сида, на gpu в вычислениях писутствует случайная составляющся и результаты все равно могут немного отличаться
         global_step = tf.contrib.framework.get_or_create_global_step() # переменная для подсчета количество эпох (?)
         
-        image, width, label, filename = _get_input() # формирование выборки для обучения
+        image, width, label, length, text, filename, number_of_images = _get_input() # формирование выборки для обучения
 
         with tf.device(FLAGS.train_device):
             features,sequence_length = model.convnet_layers( image, width, mode)
             logits = model.rnn_layers( features, sequence_length,
                                        mjsynth.num_classes() )
-            train_op = _get_training(logits,label,sequence_length)
+            train_op, label_error, sequence_error, predict, prob = _get_training(logits, label, sequence_length, length)
 
         session_config = _get_session_config()
 
         summary_op = tf.summary.merge_all() # Merges all summaries collected in the default graph.
         init_op = tf.group( tf.global_variables_initializer(),
                             tf.local_variables_initializer()) 
-
+        step_ops = [global_step, train_op, label_error, sequence_error, tf.sparse_tensor_to_dense(label), tf.sparse_tensor_to_dense(predict), text, filename, prob]
         sv = tf.train.Supervisor(
             logdir=FLAGS.output,
             init_op=init_op,
@@ -196,20 +213,55 @@ def main(argv=None):
             save_model_secs=150) # Number of seconds between the creation of model checkpoints
 
         loss_change = []
+        accuracy_change = []
+        Levenshtein_change = []
+        Levenshtein_nonzero_change = []
         with sv.managed_session(config=session_config) as sess:
             step = sess.run(global_step)
             while step < FLAGS.max_num_steps:
                 if sv.should_stop():
-                    break                    
-                [step_loss, step, f_name]=sess.run([train_op, global_step, filename])
-                # print(f_name) # вывод на экран собранного батча для обучения
-                loss_change.append(step_loss)
-                if step%100==0:
-                    print(step_loss) # вывод на экран loss
-                    np.save('./train_loss', {'loss':loss_change}) # сохранение лосса для графика
-            sv.saver.save( sess, os.path.join(FLAGS.output,'model.ckpt'),
-                           global_step=global_step)
+                    break
 
+                step_vals = sess.run(step_ops)
+
+                accuracy = 0
+                out_charset = "abcdefghijklmnopqrstuvwxyz0123456789./-"
+                for pred in range(len(step_vals[5])):
+                    pred_txt = ''
+                    for symb in step_vals[5][pred].tolist():
+                        pred_txt += str(out_charset[symb])
+                    pred_txt_clear = ''
+                    stop_pass = False
+                    # в выходе модели пустые символы в конце стркои заполняются первым символом out_charset
+                    for symb in pred_txt[::-1]:
+                        if symb == out_charset[0] and stop_pass == False:
+                            pass
+                        else:
+                            pred_txt_clear = symb + pred_txt_clear
+                            stop_pass = True
+                    if pred_txt_clear == step_vals[6][pred].decode('utf-8'):
+                        accuracy += 1
+
+                # print(step_ops[7]) # вывод на экран собранного батча для обучения
+                loss_change.append(step_vals[1])
+                accuracy_change.append(accuracy/len(step_vals[5]))
+                Levenshtein_change.append(step_vals[2])
+                Levenshtein_nonzero_change.append(step_vals[3])
+
+                if step_vals[0]%100==0:
+                    print('loss', np.mean(loss_change[-100:]))
+                    print('sum Levenshtein on the batch', sum(Levenshtein_change[-100:]))
+                    print('sum Levenshtein nonzero', sum(Levenshtein_nonzero_change[-100:]))
+                    print('accuracy', np.mean(accuracy_change[-100:]))
+                    # сохранение лосса и других статистик
+                    np.save('./train_loss', {
+                        'loss_change':loss_change,
+                        'accuracy_change':accuracy_change,
+                        'Levenshtein_change':Levenshtein_change,
+                        'Levenshtein_nonzero_change':Levenshtein_nonzero_change
+                        })
+            sv.saver.save( sess, os.path.join(FLAGS.output,'model.ckpt'),
+                           global_step=step_vals[0])
 
 if __name__ == '__main__':
     tf.app.run()
