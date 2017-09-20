@@ -170,6 +170,7 @@ def _get_init_pretrained():
 def main(argv=None):
 
     with tf.Graph().as_default(): # формальная (если граф в программе всего один) конструкция для объединения операция в отдельный граф, https://stackoverflow.com/questions/39614938/why-do-we-need-tensorflow-tf-graph , https://danijar.com/what-is-a-tensorflow-session/
+        tf.set_random_seed(1) # фиксация сида, на gpu в вычислениях писутствует случайная составляющся и результаты все равно могут немного отличаться
         global_step = tf.contrib.framework.get_or_create_global_step() # переменная для подсчета количество эпох (?)
         
         image, width, label, filename = _get_input() # формирование выборки для обучения
