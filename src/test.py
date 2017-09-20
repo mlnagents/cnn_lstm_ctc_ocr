@@ -39,7 +39,7 @@ tf.app.flags.DEFINE_string('device','/gpu:0',
 
 tf.app.flags.DEFINE_string('test_path','../data/',
                            """Base directory for test/validation data""")
-tf.app.flags.DEFINE_string('filename_pattern','val/words-*',
+tf.app.flags.DEFINE_string('filename_pattern','test/words-*',
                            """File pattern for input data""")
 tf.app.flags.DEFINE_integer('num_input_threads',1,
                           """Number of readers for input data""")
@@ -210,8 +210,8 @@ def main(argv=None):
                                         coord.request_stop()
 
                         print('loss', step_vals[1])
-                        print('среднее расстояние Левенштейна по всей выборке', step_vals[2])
-                        print('среднее расстояние Левенштейна для ненулевых', step_vals[3])
+                        print('sum Levenshtein on the batch', step_vals[2])
+                        print('sum Levenshtein nonzero', step_vals[3])
                         print('accuracy', accuracy/len(step_vals[5]))
                         print('Batch done')
                         # summary_str = sess.run(summary_op) # вызывает повторное извлечение батча, который не используется моделью
