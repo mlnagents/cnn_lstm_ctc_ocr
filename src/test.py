@@ -97,7 +97,7 @@ def _get_testing(rnn_logits,sequence_length,label,label_length):
         #                                           sequence_length,
         #                                           merge_repeated=True)
         hypothesis = tf.cast(predictions[0], tf.int32) # for edit_distance
-        label_errors = tf.edit_distance(hypothesis, label, normalize=False)
+        label_errors = tf.edit_distance(hypothesis, label, normalize=False) # расстояние Левенштейна
         sequence_errors = tf.count_nonzero(label_errors,axis=0)
         total_label_error = tf.reduce_sum( label_errors )
         total_labels = tf.reduce_sum( label_length )
@@ -176,10 +176,9 @@ def main(argv=None):
 
                     if not coord.should_stop():
                         step_vals = sess.run(step_ops)
-                        print(step_vals[0:4])
                         print(step_vals[7]) # вывод на экран батча
-                        print('Batch done')
-                        with open('/cnn_lstm_ctc_ocr/src/result.txt', 'a') as f:
+                        with open('./result.txt', 'a') as f:
+                            accuracy = 0
                             out_charset = "abcdefghijklmnopqrstuvwxyz0123456789./-"
                             for pred in range(len(step_vals[5])):
                                 pred_txt = ''
@@ -194,24 +193,31 @@ def main(argv=None):
                                     else:
                                         pred_txt_clear = symb + pred_txt_clear
                                         stop_pass = True
+                                if pred_txt_clear == step_vals[6][pred].decode('utf-8'):
+                                    accuracy += 1
                                 # в итоговом txt файле сохраняются только уникальные изображения
                                 # батчи формируются последовательно без повторений
                                 # однако последний тестовый батч может содержать часть изображений первого батча
                                 if step_vals[7][pred] not in count_list:
                                     enlisted_images += 1
-                                    f.write(pred_txt_clear + ' ')
-                                    f.write(step_vals[6][pred].decode('utf-8') + ' ')
-                                    f.write(str(step_vals[8][pred][0]) + ' ')
-                                    f.write(step_vals[7][pred].decode('utf-8') + '\n')
+                                    f.write(pred_txt_clear + ' ') # прогноз модели
+                                    f.write(step_vals[6][pred].decode('utf-8') + ' ') # ground truth
+                                    f.write(str(step_vals[8][pred][0]) + ' ') # вероятности
+                                    f.write(step_vals[7][pred].decode('utf-8') + '\n') # директории
                                     count_list.append(step_vals[7][pred])
-                                    # остановить тест, когда количество уникальных изображений равно или больше изображений в датасете
+                                    # остановить тест, когда количество уникальных изображений равно или больше количества изображений в датасете
                                     if enlisted_images >= number_of_images:
                                         coord.request_stop()
 
+                        print('loss', step_vals[1])
+                        print('среднее расстояние Левенштейна по всей выборке', step_vals[2])
+                        print('среднее расстояние Левенштейна для ненулевых', step_vals[3])
+                        print('accuracy', accuracy/len(step_vals[5]))
+                        print('Batch done')
                         # summary_str = sess.run(summary_op) # вызывает повторное извлечение батча, который не используется моделью
                         # summary_writer.add_summary(summary_str,step_vals[0])
                     else:
-                        print('Done')
+                        print('Test done')
                         break
                     time.sleep(FLAGS.test_interval_secs)
             except tf.errors.OutOfRangeError:
