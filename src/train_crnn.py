@@ -212,10 +212,18 @@ def main(argv=None):
             init_fn=_get_init_pretrained(), # None если train запускается без предобученных весов
             save_model_secs=150) # Number of seconds between the creation of model checkpoints
 
-        loss_change = []
-        accuracy_change = []
-        Levenshtein_change = []
-        Levenshtein_nonzero_change = []
+        try:
+            loss_change = np.load('./train_loss.npy').item().get('loss_change')
+            accuracy_change = np.load('./train_loss.npy').item().get('accuracy_change')
+            Levenshtein_change = np.load('./train_loss.npy').item().get('Levenshtein_change')
+            Levenshtein_nonzero_change = np.load('./train_loss.npy').item().get('Levenshtein_nonzero_change')
+            print('metrics and loss are loaded')
+        except:
+            loss_change = []
+            accuracy_change = []
+            Levenshtein_change = []
+            Levenshtein_nonzero_change = []
+            print('metrics and loss are created')
         with sv.managed_session(config=session_config) as sess:
             step = sess.run(global_step)
             while step < FLAGS.max_num_steps:
