@@ -18,7 +18,7 @@ import os
 import time
 import tensorflow as tf
 from tensorflow.contrib import learn
-
+import numpy as np
 import mjsynth
 import model
 
@@ -158,7 +158,7 @@ def main(argv=None):
         summary_writer = tf.summary.FileWriter( os.path.join(FLAGS.model,
                                                             FLAGS.output) )
 
-        step_ops = [global_step, loss, label_error, sequence_error, tf.sparse_tensor_to_dense(label), tf.sparse_tensor_to_dense(predict), text, filename, prob]
+        step_ops = [global_step, loss, label_error, sequence_error, tf.sparse_tensor_to_dense(label), tf.sparse_tensor_to_dense(predict), text, filename, prob, logits]
 
         with tf.Session(config=session_config) as sess:
             
@@ -167,8 +167,12 @@ def main(argv=None):
             enlisted_images = 0
             coord = tf.train.Coordinator() # Launch reader threads
             threads = tf.train.start_queue_runners(sess=sess,coord=coord)
-            
+
             summary_writer.add_graph(sess.graph)
+            loss_change = []
+            accuracy_change = []
+            Levenshtein_change = []
+            Levenshtein_nonzero_change = []
 
             try:            
                 while True:
@@ -176,7 +180,32 @@ def main(argv=None):
 
                     if not coord.should_stop():
                         step_vals = sess.run(step_ops)
-                        print(step_vals[7]) # вывод на экран батча
+                        # print(step_vals[7]) # вывод на экран батча
+                        # out_charset = "abcdefghijklmnopqrstuvwxyz0123456789./-%"
+                        # a = step_vals[-1]
+                        # a = np.reshape(a, (step_vals[-1].shape[0],40))
+                        # max_a = 0
+                        # max_a_j = 0
+                        # sum_a = 0
+                        # total_mult = 0
+                        # total_add = 0
+                        # with open('./result.txt', 'a') as f:
+                        #     for q in range(step_vals[-1].shape[0]):
+                        #         for j in range(40):
+                        #             if a[q][j] >= 0:
+                        #                 sum_a += np.exp(a[q][j])
+                        #             if a[q][j] > max_a:
+                        #                 max_a = a[q][j]
+                        #                 max_a_j = j
+                        #         if str(out_charset[max_a_j]) != '%' and sum_a > 0:
+                        #             f.write(str(max_a) + ' = ' + str(out_charset[max_a_j]) +' (' + str(round(np.log(np.exp(max_a)/sum_a), 5)) +') ' + '\n')
+                        #             total_mult = total_mult*np.log(np.exp(max_a)/sum_a)
+                        #             total_add += np.log(np.exp(max_a)/sum_a)
+                        #         max_a = 0
+                        #         max_a_j = 0
+                        #         sum_a = 0
+                        #     f.write(str(total_mult) + '\n')
+                        #     f.write(str(total_add) + '\n')
                         with open('./result.txt', 'a') as f:
                             accuracy = 0
                             out_charset = "abcdefghijklmnopqrstuvwxyz0123456789./-"
@@ -209,14 +238,19 @@ def main(argv=None):
                                     if enlisted_images >= number_of_images:
                                         coord.request_stop()
 
-                        print('loss', step_vals[1])
-                        print('sum Levenshtein on the batch', step_vals[2])
-                        print('sum Levenshtein nonzero', step_vals[3])
-                        print('accuracy', accuracy/len(step_vals[5]))
+                        print(round(enlisted_images/number_of_images, 2)) # процент пройденного датасета
+                        loss_change.append(step_vals[1])
+                        accuracy_change.append(accuracy/len(step_vals[5]))
+                        Levenshtein_change.append(step_vals[2])
+                        Levenshtein_nonzero_change.append(step_vals[3])
                         print('Batch done')
                         # summary_str = sess.run(summary_op) # вызывает повторное извлечение батча, который не используется моделью
                         # summary_writer.add_summary(summary_str,step_vals[0])
                     else:
+                        print('loss', np.mean(loss_change))
+                        print('sum Levenshtein on the batch', np.mean(Levenshtein_change))
+                        print('sum Levenshtein nonzero', np.mean(Levenshtein_nonzero_change))
+                        print('accuracy', np.mean(accuracy_change))
                         print('Test done')
                         break
                     time.sleep(FLAGS.test_interval_secs)
