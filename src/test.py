@@ -98,15 +98,11 @@ def _get_testing(rnn_logits,sequence_length,label,label_length):
         #                                           merge_repeated=True)
         hypothesis = tf.cast(predictions[0], tf.int32) # for edit_distance
         label_errors = tf.edit_distance(hypothesis, label, normalize=False) # расстояние Левенштейна
-        sequence_errors = tf.count_nonzero(label_errors,axis=0)
-        total_label_error = tf.reduce_sum( label_errors )
-        total_labels = tf.reduce_sum( label_length )
-        label_error = tf.truediv( total_label_error, 
-                                  tf.cast(total_labels, tf.float32 ),
-                                  name='label_error')
-        sequence_error = tf.truediv( tf.cast( sequence_errors, tf.int32 ),
-                                     tf.shape(label_length)[0],
-                                     name='sequence_error')
+        sequence_errors = tf.count_nonzero(label_errors, axis=0) # подсчет ненулевых значнией, то есть случаев, когда выход модели не совпадает с gt
+        total_label_error = tf.reduce_sum(label_errors) # рассчет суммы расстояний Левенштейна по батчу
+        total_labels = tf.reduce_sum(label_length) # количество символов в gt для всего батча
+        label_error = tf.truediv(total_label_error, tf.cast(total_labels, tf.float32), name='label_error') # нормированное расстояние Левенштейна (деленное на количество символов)
+        sequence_error = tf.truediv(tf.cast(sequence_errors, tf.int32), tf.shape(label_length)[0], name='sequence_error') # доля неправильных ответов
         tf.summary.scalar( 'loss', loss )
         tf.summary.scalar( 'label_error', label_error )
         tf.summary.scalar( 'sequence_error', sequence_error )
@@ -170,9 +166,8 @@ def main(argv=None):
 
             summary_writer.add_graph(sess.graph)
             loss_change = []
-            accuracy_change = []
             Levenshtein_change = []
-            Levenshtein_nonzero_change = []
+            accuracy_change = []
 
             try:            
                 while True:
@@ -207,7 +202,6 @@ def main(argv=None):
                         #     f.write(str(total_mult) + '\n')
                         #     f.write(str(total_add) + '\n')
                         with open('./result.txt', 'a') as f:
-                            accuracy = 0
                             out_charset = "abcdefghijklmnopqrstuvwxyz0123456789./-"
                             for pred in range(len(step_vals[5])):
                                 pred_txt = ''
@@ -222,8 +216,6 @@ def main(argv=None):
                                     else:
                                         pred_txt_clear = symb + pred_txt_clear
                                         stop_pass = True
-                                if pred_txt_clear == step_vals[6][pred].decode('utf-8'):
-                                    accuracy += 1
                                 # в итоговом txt файле сохраняются только уникальные изображения
                                 # батчи формируются последовательно без повторений
                                 # однако последний тестовый батч может содержать часть изображений первого батча
@@ -240,16 +232,14 @@ def main(argv=None):
 
                         print(round(enlisted_images/number_of_images, 2)) # процент пройденного датасета
                         loss_change.append(step_vals[1])
-                        accuracy_change.append(accuracy/len(step_vals[5]))
                         Levenshtein_change.append(step_vals[2])
-                        Levenshtein_nonzero_change.append(step_vals[3])
+                        accuracy_change.append(1-step_vals[3])
                         print('Batch done')
                         # summary_str = sess.run(summary_op) # вызывает повторное извлечение батча, который не используется моделью
                         # summary_writer.add_summary(summary_str,step_vals[0])
                     else:
                         print('loss', np.mean(loss_change))
-                        print('sum Levenshtein on the batch', np.mean(Levenshtein_change))
-                        print('sum Levenshtein nonzero', np.mean(Levenshtein_nonzero_change))
+                        print('mean Levenshtein', np.mean(Levenshtein_change))
                         print('accuracy', np.mean(accuracy_change))
                         print('Test done')
                         break

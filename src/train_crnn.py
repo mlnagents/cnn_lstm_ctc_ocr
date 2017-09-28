@@ -146,11 +146,11 @@ def _get_training(rnn_logits, label, sequence_length, label_length):
                                                    merge_repeated=False) # если True, то на выходе модели не будет повторяющихся символов
         hypothesis = tf.cast(predictions[0], tf.int32) # for edit_distance
         label_errors = tf.edit_distance(hypothesis, label, normalize=False) # расстояние Левенштейна
-        sequence_errors = tf.count_nonzero(label_errors, axis=0)
-        total_label_error = tf.reduce_sum(label_errors)
-        total_labels = tf.reduce_sum(label_length)
-        label_error = tf.truediv(total_label_error, tf.cast(total_labels, tf.float32), name='label_error')
-        sequence_error = tf.truediv(tf.cast(sequence_errors, tf.int32), tf.shape(label_length)[0], name='sequence_error')
+        sequence_errors = tf.count_nonzero(label_errors, axis=0) # подсчет ненулевых значнией, то есть случаев, когда выход модели не совпадает с gt
+        total_label_error = tf.reduce_sum(label_errors) # рассчет суммы расстояний Левенштейна по батчу
+        total_labels = tf.reduce_sum(label_length) # количество символов в gt для всего батча
+        label_error = tf.truediv(total_label_error, tf.cast(total_labels, tf.float32), name='label_error') # нормированное расстояние Левенштейна (деленное на количество символов)
+        sequence_error = tf.truediv(tf.cast(sequence_errors, tf.int32), tf.shape(label_length)[0], name='sequence_error') # доля неправильных ответов
         tf.summary.scalar('loss', loss)
         tf.summary.scalar('label_error', label_error)
         tf.summary.scalar('sequence_error', sequence_error)
@@ -214,15 +214,13 @@ def main(argv=None):
 
         try:
             loss_change = np.load('./train_loss.npy').item().get('loss_change')
-            accuracy_change = np.load('./train_loss.npy').item().get('accuracy_change')
             Levenshtein_change = np.load('./train_loss.npy').item().get('Levenshtein_change')
-            Levenshtein_nonzero_change = np.load('./train_loss.npy').item().get('Levenshtein_nonzero_change')
+            accuracy_change = np.load('./train_loss.npy').item().get('accuracy_change')
             print('metrics and loss are loaded')
         except:
             loss_change = []
-            accuracy_change = []
             Levenshtein_change = []
-            Levenshtein_nonzero_change = []
+            accuracy_change = []
             print('metrics and loss are created')
         with sv.managed_session(config=session_config) as sess:
             step = sess.run(global_step)
@@ -232,7 +230,6 @@ def main(argv=None):
 
                 step_vals = sess.run(step_ops)
 
-                accuracy = 0
                 out_charset = "abcdefghijklmnopqrstuvwxyz0123456789./-"
                 for pred in range(len(step_vals[5])):
                     pred_txt = ''
@@ -247,29 +244,25 @@ def main(argv=None):
                         else:
                             pred_txt_clear = symb + pred_txt_clear
                             stop_pass = True
-                    if pred_txt_clear == step_vals[6][pred].decode('utf-8'):
-                        accuracy += 1
 
                 # print(step_ops[7]) # вывод на экран собранного батча для обучения
                 loss_change.append(step_vals[1])
-                accuracy_change.append(accuracy/len(step_vals[5]))
                 Levenshtein_change.append(step_vals[2])
-                Levenshtein_nonzero_change.append(step_vals[3])
+                accuracy_change.append(1-step_vals[3])
 
                 if step_vals[0]%100==0:
                     print('loss', np.mean(loss_change[-100:]))
-                    print('sum Levenshtein on the batch', sum(Levenshtein_change[-100:]))
-                    print('sum Levenshtein nonzero', sum(Levenshtein_nonzero_change[-100:]))
+                    print('mean Levenshtein', np.mean(Levenshtein_change[-100:]))
                     print('accuracy', np.mean(accuracy_change[-100:]))
                     # сохранение лосса и других статистик
                     np.save('./train_loss', {
                         'loss_change':loss_change,
-                        'accuracy_change':accuracy_change,
                         'Levenshtein_change':Levenshtein_change,
-                        'Levenshtein_nonzero_change':Levenshtein_nonzero_change
+                        'accuracy_change':accuracy_change
                         })
             sv.saver.save( sess, os.path.join(FLAGS.output,'model.ckpt'),
                            global_step=step_vals[0])
 
 if __name__ == '__main__':
+    # from pudb import set_trace; set_trace()
     tf.app.run()
