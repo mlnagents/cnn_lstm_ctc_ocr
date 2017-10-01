@@ -10,8 +10,9 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('output', '../data/model', 'Directory for event logs and checkpoints')
 tf.app.flags.DEFINE_string('tune_from', '', 'Path to pre-trained model checkpoint')
 tf.app.flags.DEFINE_string('tune_scope', '', 'Variable scope for training')
+tf.app.flags.DEFINE_integer('save_and_print_frequency', 100, 'Save and print frequency')
 
-tf.app.flags.DEFINE_integer('batch_size', 30, 'Mini-batch size')
+tf.app.flags.DEFINE_integer('batch_size', 1, 'Mini-batch size')
 tf.app.flags.DEFINE_float('learning_rate', 1e-4, 'Initial learning rate')
 tf.app.flags.DEFINE_float('momentum', 0.9, 'Optimizer gradient first-order momentum')
 tf.app.flags.DEFINE_float('decay_rate', 0.9, 'Learning rate decay base')
@@ -72,7 +73,6 @@ def _get_training(rnn_logits, label, sequence_length, label_length):
                 learning_rate=learning_rate, 
                 optimizer=optimizer,
                 variables=rnn_vars)
-            tf.summary.scalar('learning_rate', learning_rate)
 
     with tf.name_scope('test'):
         predictions, probability = tf.nn.ctc_beam_search_decoder(rnn_logits, # вытаскивание log_probabilities из ctc
@@ -87,9 +87,6 @@ def _get_training(rnn_logits, label, sequence_length, label_length):
         total_labels = tf.reduce_sum(label_length) # количество символов в gt для всего батча
         label_error = tf.truediv(total_label_error, tf.cast(total_labels, tf.float32), name='label_error') # нормированное расстояние Левенштейна (деленное на количество символов)
         sequence_error = tf.truediv(tf.cast(sequence_errors, tf.int32), tf.shape(label_length)[0], name='sequence_error') # доля неправильных ответов
-        tf.summary.scalar('loss', loss)
-        tf.summary.scalar('label_error', label_error)
-        tf.summary.scalar('sequence_error', sequence_error)
 
     return train_op, label_error, sequence_error, predictions[0], probability
 
@@ -101,15 +98,6 @@ def _get_session_config():
         allow_soft_placement=True, 
         log_device_placement=False)
     return config
-
-def _get_init_pretrained():
-    # Return lambda for reading pretrained initial model
-    if not FLAGS.tune_from:
-        return None
-    saver_reader = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES))
-    ckpt_path=FLAGS.tune_from
-    init_fn = lambda sess: saver_reader.restore(sess, ckpt_path)
-    return init_fn
 
 def main(argv=None):
 
@@ -125,21 +113,13 @@ def main(argv=None):
             train_op, label_error, sequence_error, predict, prob = _get_training(logits, label, sequence_length, length)
 
         session_config = _get_session_config()
-
-        summary_op = tf.summary.merge_all() # Merges all summaries collected in the default graph.
         
+        saver_reader = tf.train.Saver(max_to_keep=100)
+
         init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer()) 
         
         step_ops = [global_step, train_op, label_error, sequence_error, tf.sparse_tensor_to_dense(label), tf.sparse_tensor_to_dense(predict), text, filename, prob]
         
-        sv = tf.train.Supervisor(
-            logdir=FLAGS.output,
-            init_op=init_op,
-            summary_op=summary_op,
-            save_summaries_secs=30, # Number of seconds between the computation of summaries for the event log
-            init_fn=_get_init_pretrained(), # None если train запускается без предобученных весов
-            save_model_secs=150) # Number of seconds between the creation of model checkpoints
-
         try:
             loss_change = np.load('./train_loss.npy').item().get('loss_change')
             Levenshtein_change = np.load('./train_loss.npy').item().get('Levenshtein_change')
@@ -150,11 +130,24 @@ def main(argv=None):
             Levenshtein_change = []
             accuracy_change = []
             print('metrics and loss are created')
-        with sv.managed_session(config=session_config) as sess:
+        with tf.Session(config=session_config) as sess:
+            sess.run(init_op)
+            coord = tf.train.Coordinator() # Launch reader threads
+            threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+            # подгрузка весов
+            if os.path.isdir(FLAGS.output):
+                ckpt = tf.train.get_checkpoint_state(FLAGS.output)
+                if ckpt and ckpt.model_checkpoint_path:
+                    ckpt_path = ckpt.model_checkpoint_path
+                else:
+                    raise RuntimeError('No checkpoint file found')
+                # init_fn = lambda sess, ckpt_path: saver_reader.restore(sess, ckpt_path)
+                saver_reader.restore(sess, ckpt_path)
             step = sess.run(global_step)
             while step < FLAGS.max_num_steps:
 
                 step_vals = sess.run(step_ops)
+                step = step_vals[0]
 
                 out_charset = 'abcdefghijklmnopqrstuvwxyz0123456789./-'
                 for pred in range(len(step_vals[5])):
@@ -175,17 +168,18 @@ def main(argv=None):
                 loss_change.append(step_vals[1])
                 Levenshtein_change.append(step_vals[2])
                 accuracy_change.append(1-step_vals[3])
-                if step_vals[0]%100==0:
-                    print('loss', np.mean(loss_change[-100:]))
-                    print('mean Levenshtein', np.mean(Levenshtein_change[-100:]))
-                    print('accuracy', np.mean(accuracy_change[-100:]))
+                print(step_vals[1])
+                if step_vals[0]%FLAGS.save_and_print_frequency==0:
+                    print('loss', np.mean(loss_change[-FLAGS.save_and_print_frequency:]))
+                    print('mean Levenshtein', np.mean(Levenshtein_change[-FLAGS.save_and_print_frequency:]))
+                    print('accuracy', np.mean(accuracy_change[-FLAGS.save_and_print_frequency:]))
                     # сохранение лосса и других статистик
                     np.save('./train_loss', {
                         'loss_change':loss_change,
                         'Levenshtein_change':Levenshtein_change,
-                        'accuracy_change':accuracy_change
-                        })
-            sv.saver.save(sess, os.path.join(FLAGS.output,'model.ckpt'), global_step=step_vals[0])
+                        'accuracy_change':accuracy_change})
+                    saver_reader.save(sess, os.path.join(FLAGS.output, 'model.ckpt'), global_step=step)
+        coord.join(threads)
 
 if __name__ == '__main__':
     # from pudb import set_trace; set_trace()
