@@ -53,7 +53,7 @@ for dataset in dir_txt:
 					symbol_new = ''
 					skip_symbol = True
 				elif replace_symbol == 'NEW_SYMBOL':
-					sys.exit('не должно быть NEW_SYMBOl, выход из программы')
+					sys.exit('не должно быть NEW_SYMBOL, выход из программы')
 				else:
 					symbol_new = replace_symbol
 
@@ -66,11 +66,8 @@ for dataset in dir_txt:
 				file_text_new += symbol_new
 
 			if skip_image == False:
-				for symbol in file_text_new:
-					if symbol not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ':
-						f.write(file_dir + ' ' + file_text_new + '\n')
-						count_not_skip += 1
-						break
+				f.write(file_dir + ' ' + file_text_new + '\n')
+				count_not_skip += 1
 
 
 sorted_new_alphabet = sorted(new_alphabet.items(), key=operator.itemgetter(1))
